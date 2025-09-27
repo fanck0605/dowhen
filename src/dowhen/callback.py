@@ -26,9 +26,7 @@ class Callback:
     def __init__(self, func: str | Callable, **kwargs):
         if isinstance(func, str):
             pass
-        elif inspect.isfunction(func):
-            self.func_args = inspect.getfullargspec(func).args
-        elif inspect.ismethod(func):
+        elif callable(func):
             self.func_args = inspect.getfullargspec(func).args
         else:
             raise TypeError(f"Unsupported callback type: {type(func)}. ")
@@ -42,7 +40,7 @@ class Callback:
                 self._call_goto(frame)
             else:
                 self._call_code(frame)
-        elif inspect.isfunction(self.func) or inspect.ismethod(self.func):
+        elif callable(self.func):
             ret = self._call_function(frame, **kwargs)
         else:  # pragma: no cover
             assert False, "Unknown callback type"
@@ -60,7 +58,7 @@ class Callback:
         exec(self.func, frame.f_globals, frame.f_locals)
 
     def _call_function(self, frame: FrameType, **kwargs) -> Any:
-        assert isinstance(self.func, (FunctionType, MethodType))
+        assert callable(self.func)
         writeback = call_in_frame(self.func, frame, **kwargs)
 
         f_locals = frame.f_locals
