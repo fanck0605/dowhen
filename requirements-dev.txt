@@ -12,6 +12,7 @@ coverage
 pytest
 pytest-cov
 coredumpy
+cython
 
 # Documentation requirements
 sphinx>=8.0

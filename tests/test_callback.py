@@ -2,6 +2,9 @@
 # For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE
 
 
+import glob
+import importlib.util
+import subprocess
 import sys
 
 import pytest
@@ -237,3 +240,81 @@ def test_bp():
         assert "(Pdb) " in out
         assert "test_bp()" in out
         assert "return x" in out
+
+
+def import_from_path(module_name, file_path):
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_do_when_with_cython_function(tmpdir):
+    (tmpdir / "change.py").write("""def change(x, y):
+    x = 2
+    y = 3
+    return {"x": x, "y": y}
+""")
+    (tmpdir / "setup.py").write("""from Cython.Build import cythonize
+from setuptools import setup
+
+setup(ext_modules=cythonize("change.py"))
+""")
+
+    subprocess.check_call(
+        [sys.executable, "setup.py", "build_ext", "--inplace"], cwd=tmpdir
+    )
+    if sys.platform == "win32":
+        compiled_change = glob.glob(str(tmpdir / "change.*.pyd"))[0]
+    else:
+        compiled_change = glob.glob(str(tmpdir / "change.*.so"))[0]
+
+    change = import_from_path("change", compiled_change).change
+
+    def f(x, y):
+        return x + y
+
+    dowhen.do(change).when(f, "return x + y")
+    assert f(1, 1) == 5
+
+
+def test_do_when_with_cython_method(tmpdir):
+    (tmpdir / "A.py").write("""class A:
+    def change(self, x):
+        return {"x": 1}
+
+    @classmethod
+    def classmethod_change(cls, x):
+        return {"x": 2}
+
+    @staticmethod
+    def staticmethod_change(x):
+        return {"x": 3}
+""")
+    (tmpdir / "setup.py").write("""from Cython.Build import cythonize
+from setuptools import setup
+
+setup(ext_modules=cythonize("A.py"))
+""")
+
+    subprocess.check_call(
+        [sys.executable, "setup.py", "build_ext", "--inplace"], cwd=tmpdir
+    )
+    if sys.platform == "win32":
+        compiled_change = glob.glob(str(tmpdir / "A.*.pyd"))[0]
+    else:
+        compiled_change = glob.glob(str(tmpdir / "A.*.so"))[0]
+
+    A = import_from_path("A", compiled_change).A
+
+    def f(x):
+        return x
+
+    with dowhen.do(A().change).when(f, "return x"):
+        assert f(2) == 1
+
+    with dowhen.do(A.classmethod_change).when(f, "return x"):
+        assert f(3) == 2
+
+    with dowhen.do(A.staticmethod_change).when(f, "return x"):
+        assert f(4) == 3
